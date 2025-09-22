@@ -1,4 +1,5 @@
 import { fileURLToPath, URL } from 'node:url';
+import { dirname } from 'path';
 
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
@@ -11,6 +12,8 @@ import Components from 'unplugin-vue-components/vite';
 import { ElementPlusResolver } from 'unplugin-vue-components/resolvers';
 import fs from 'fs';
 import path from 'path';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
     plugins: [
@@ -57,10 +60,12 @@ export default defineConfig({
         }
     },
     server: {
-        https: {
-            key: fs.readFileSync(path.resolve(__dirname, 'key.pem')),
-            cert: fs.readFileSync(path.resolve(__dirname, 'cert.pem')),
-        },
+        ...(fs.existsSync(path.resolve(__dirname, 'key.pem')) && fs.existsSync(path.resolve(__dirname, 'cert.pem')) ? {
+            https: {
+                key: fs.readFileSync(path.resolve(__dirname, 'key.pem')),
+                cert: fs.readFileSync(path.resolve(__dirname, 'cert.pem')),
+            }
+        } : {}),
         host: '0.0.0.0',
         port: 8088,
         proxy: {
