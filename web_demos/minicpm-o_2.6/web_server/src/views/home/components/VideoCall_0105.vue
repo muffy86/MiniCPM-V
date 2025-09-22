@@ -65,7 +65,7 @@
     </div>
 </template>
 <script setup>
-    import { sendMessage, stopMessage, uploadConfig } from '@/apis';
+    import { stopMessage, uploadConfig } from '@/apis';
     import { encodeWAV } from '@/hooks/useVoice';
     import { getNewUserId, setNewUserId } from '@/hooks/useRandomId';
     import { fetchEventSource } from '@microsoft/fetch-event-source';
@@ -115,7 +115,6 @@
 
     let mediaStream;
     let audioRecorder;
-    let audioStream;
     let audioContext;
     let audioChunks = [];
     let count = 0;
@@ -129,19 +128,16 @@
     const vadStart = async () => {
         myvad = await MicVAD.new({
             onSpeechStart: () => {
-                console.log('Speech start', +new Date());
                 if (!skipDisabled.value) {
                     vadTimer && clearTimeout(vadTimer);
                     vadTimer = setTimeout(() => {
                         // vadStartTime.value = +new Date();
-                        console.log('打断时间: ', +new Date());
                         skipVoice();
                     }, 1000);
                 }
             },
-            onSpeechEnd: audio => {
+            onSpeechEnd: () => {
                 vadTimer && clearTimeout(vadTimer);
-                console.log('Speech end', +new Date());
                 // debugger;
                 // do something with `audio` (Float32Array of audio samples at sample rate 16000)...
             }
