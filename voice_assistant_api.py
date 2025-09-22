@@ -12,6 +12,7 @@ import sys
 import asyncio
 import base64
 from typing import Dict, Any, Optional
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, File, UploadFile, HTTPException, Form
 from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel
@@ -40,18 +41,12 @@ class APIResponse(BaseModel):
 # Global voice assistant instance
 voice_assistant = None
 
-# FastAPI app
-app = FastAPI(
-    title="Voice Assistant API",
-    description="REST API for MiniCPM-o Voice Assistant Agent",
-    version="1.0.0"
-)
-
-@app.on_event("startup")
-async def startup_event():
-    """Initialize the voice assistant on startup."""
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manage the application lifespan."""
     global voice_assistant
     
+    # Startup
     try:
         print("Initializing Voice Assistant...")
         voice_assistant = VoiceAssistantAgent(
@@ -65,6 +60,19 @@ async def startup_event():
     except Exception as e:
         print(f"Failed to initialize Voice Assistant: {e}")
         sys.exit(1)
+    
+    yield
+    
+    # Shutdown
+    print("Shutting down Voice Assistant...")
+
+# FastAPI app
+app = FastAPI(
+    title="Voice Assistant API",
+    description="REST API for MiniCPM-o Voice Assistant Agent",
+    version="1.0.0",
+    lifespan=lifespan
+)
 
 @app.get("/")
 async def root():
