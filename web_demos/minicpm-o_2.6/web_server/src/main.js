@@ -1,5 +1,6 @@
 import './styles/main.css';
 
+import { createApp } from 'vue';
 import { router, setupRouter } from '@/router';
 import { setupRouterGuard } from '@/router/guard';
 import SvgIcon from '@/components/SvgIcon/index.vue';

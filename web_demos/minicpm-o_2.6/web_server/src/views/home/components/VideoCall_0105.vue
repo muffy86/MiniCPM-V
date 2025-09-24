@@ -65,7 +65,7 @@
     </div>
 </template>
 <script setup>
-    import { sendMessage, stopMessage, uploadConfig } from '@/apis';
+    import { stopMessage, uploadConfig } from '@/apis';
     import { encodeWAV } from '@/hooks/useVoice';
     import { getNewUserId, setNewUserId } from '@/hooks/useRandomId';
     import { fetchEventSource } from '@microsoft/fetch-event-source';
@@ -76,10 +76,7 @@
     import WebSocketService from '@/utils/websocket';
     let ctrl = new AbortController();
     let socket = null;
-    const audioData = ref({
-        base64Str: '',
-        type: 'mp3'
-    }); // 自定义音色base64
+    
     const isCalling = defineModel();
     const videoRef = ref();
     const videoStream = ref(null);
@@ -94,7 +91,6 @@
     const audioPlayQueue = ref([]);
     const base64List = ref([]);
     const playing = ref(false);
-    const timbre = ref([1]);
     const isReturnError = ref(false);
 
     const textQueue = ref('');
@@ -119,7 +115,6 @@
 
     let mediaStream;
     let audioRecorder;
-    let audioStream;
     let audioContext;
     let audioChunks = [];
     let count = 0;
@@ -133,19 +128,16 @@
     const vadStart = async () => {
         myvad = await MicVAD.new({
             onSpeechStart: () => {
-                console.log('Speech start', +new Date());
                 if (!skipDisabled.value) {
                     vadTimer && clearTimeout(vadTimer);
                     vadTimer = setTimeout(() => {
                         // vadStartTime.value = +new Date();
-                        console.log('打断时间: ', +new Date());
                         skipVoice();
                     }, 1000);
                 }
             },
-            onSpeechEnd: audio => {
+            onSpeechEnd: () => {
                 vadTimer && clearTimeout(vadTimer);
-                console.log('Speech end', +new Date());
                 // debugger;
                 // do something with `audio` (Float32Array of audio samples at sample rate 16000)...
             }
@@ -425,7 +417,6 @@
                 isFirstReturn.value = true;
                 allVoice.value = [];
                 base64List.value = [];
-                console.log('onopen', response);
                 if (response.status !== 200) {
                     ElMessage({
                         type: 'error',
@@ -446,11 +437,9 @@
                 }
                 if (data.choices[0]?.text) {
                     textQueue.value += data.choices[0].text.replace('<end>', '');
-                    console.warn('text return time -------------------------------', +new Date());
                 }
                 // 首次返回的是前端发给后端的音频片段，需要单独处理
                 if (isFirstReturn.value) {
-                    console.log('第一次');
                     isFirstReturn.value = false;
                     // 如果后端返回的音频为空，需要重连
                     if (!data.choices[0].audio) {
@@ -469,7 +458,6 @@
                     return;
                 }
                 if (data.choices[0]?.audio) {
-                    console.log('audio return time -------------------------------', +new Date());
                     if (!getStopValue() && isCalling.value) {
                         skipDisabled.value = false;
                         base64List.value.push(`data:audio/wav;base64,${data.choices[0].audio}`);
@@ -481,7 +469,6 @@
                     buildConnect();
                 }
                 if (data.choices[0].text.includes('<end>')) {
-                    console.log('收到结束标记了:', +new Date());
                     if (
                         outputData.value[outputData.value.length - 1]?.type === 'BOT' &&
                         outputData.value[outputData.value.length - 1].audio === '' &&
@@ -492,7 +479,6 @@
                 }
             },
             onclose() {
-                console.log('onclose', +new Date());
                 isEnd.value = true;
                 outputData.value[outputData.value.length - 1].audio = mergeBase64ToBlob(allVoice.value);
                 // sse关闭后，如果待播放的音频列表为空，说明模型出错了，此次连接没有返回音频，则直接重连
@@ -508,10 +494,16 @@
                 }
             },
             onerror(err) {
-                console.log('onerror', err);
+                console.error('Connection error:', err);
+                ElMessage({
+                    type: 'error',
+                    message: 'Connection error occurred. Attempting to reconnect...',
+                    duration: 3000
+                });
                 ctrl.abort();
                 ctrl = new AbortController();
-                throw err;
+                // Don't throw error, let connection retry logic handle it
+                isReturnError.value = true;
             }
         });
     };
@@ -529,16 +521,12 @@
     };
     // 控制播放队列执行
     const playAudio = () => {
-        console.log('剩余播放列表:', audioPlayQueue.value, +new Date());
-
         if (!isEnd.value && base64List.value.length >= 2) {
             const remainLen = base64List.value.length;
             const blob = mergeBase64ToBlob(base64List.value);
             audioDOM.src = blob;
             audioDOM.play();
-            console.error('前期合并后播放开始时间: ', +new Date());
             audioDOM.onended = () => {
-                console.error('前期合并后播放结束时间: ', +new Date());
                 base64List.value = base64List.value.slice(remainLen);
                 audioPlayQueue.value = audioPlayQueue.value.slice(remainLen);
                 playAudio();
@@ -549,9 +537,7 @@
             const blob = mergeBase64ToBlob(base64List.value);
             audioDOM.src = blob;
             audioDOM.play();
-            console.error('合并后播放开始时间: ', +new Date());
             audioDOM.onended = () => {
-                console.error('合并后播放结束时间: ', +new Date());
                 // URL.revokeObjectURL(url);
                 base64List.value = [];
                 audioPlayQueue.value = [];
@@ -562,20 +548,6 @@
                     taskQueue.value = [];
                     // 打断前记录一下打断时间或vad触发事件
                     // vadStartTime.value = +new Date();
-                    // // 每次完成后只保留当前时刻往前推1s的语音
-                    // console.log(
-                    //     '截取前长度:',
-                    //     taskQueue.value.map(item => item.time)
-                    // );
-                    // let startIndex = taskQueue.value.findIndex(item => item.time >= vadStartTime.value - 1000);
-                    // if (startIndex !== -1) {
-                    //     taskQueue.value = taskQueue.value.slice(startIndex);
-                    //     console.log(
-                    //         '截取后长度:',
-                    //         taskQueue.value.map(item => item.time),
-                    //         vadStartTime.value
-                    //     );
-                    // }
                     buildConnect();
                 }
             };
@@ -590,63 +562,51 @@
         } else {
             playing.value = false;
             if (isEnd.value) {
-                console.warn('play done................');
                 skipDisabled.value = true;
             }
             // 播放完成后且正在通话且接口未返回错误时开始下一次连接
             if (isEnd.value && isCalling.value && !isReturnError.value) {
                 // skipDisabled.value = true;
                 taskQueue.value = [];
-                // // 跳过之后，只保留当前时间点两秒内到之后的音频片段
-                // vadStartTime.value = +new Date();
-                // console.log(
-                //     '截取前长度:',
-                //     taskQueue.value.map(item => item.time)
-                // );
-                // let startIndex = taskQueue.value.findIndex(item => item.time >= vadStartTime.value - 1000);
-                // if (startIndex !== -1) {
-                //     taskQueue.value = taskQueue.value.slice(startIndex);
-                //     console.log(
-                //         '截取后长度:',
-                //         taskQueue.value.map(item => item.time),
-                //         vadStartTime.value
-                //     );
-                // }
                 buildConnect();
             }
         }
     };
     // 播放音频
     const truePlay = voice => {
-        console.log('promise: ', +new Date());
         return new Promise(resolve => {
             audioDOM.src = 'data:audio/wav;base64,' + voice;
-            console.error('播放开始时间:', +new Date());
             audioDOM
                 .play()
                 .then(() => {
-                    console.log('Audio played successfully');
+                    // Audio playback started successfully
                 })
                 .catch(error => {
                     if (error.name === 'NotAllowedError' || error.name === 'SecurityError') {
-                        console.error('User interaction required or permission issue:', error);
-                        // ElMessage.warning('音频播放失败');
-                        console.error('播放失败时间');
-                        // alert('Please interact with the page (like clicking a button) to enable audio playback.');
+                        console.warn('User interaction required or permission issue:', error);
+                        // Show user-friendly message for permission issues
+                        ElMessage({
+                            type: 'warning',
+                            message: 'Please allow audio playback permissions or interact with the page first',
+                            duration: 3000
+                        });
                     } else {
                         console.error('Error playing audio:', error);
+                        ElMessage({
+                            type: 'error',
+                            message: 'Audio playback failed',
+                            duration: 3000
+                        });
                     }
+                    resolve(); // Resolve even on error to continue processing
                 });
-            // .finally(() => {
-            //     resolve();
-            // });
+            
             audioDOM.onerror = () => {
-                console.error('播放失败时间', +new Date());
+                console.error('Audio playback error occurred');
                 resolve();
             };
             audioDOM.onended = () => {
-                console.error('播放结束时间: ', +new Date());
-                // URL.revokeObjectURL(url);
+                // Audio playback completed successfully
                 resolve();
             };
         });
